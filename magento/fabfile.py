@@ -141,7 +141,7 @@ def main(repo, repourl, branch, build, buildtype, url=None, magento_email=None, 
       execute(common.Services.clear_varnish_cache, hosts=env.roledefs['app_all'])
       execute(common.Services.reload_webserver, hosts=env.roledefs['app_all'])
 
-      execute(Magento.generate_magento_cron, repo, buildtype, site_link)
+      execute(Magento.generate_magento_cron, repo, buildtype, site_link, autoscale)
 
       # Let's allow developers to perform some post-build actions if they need to
       execute(common.Utils.perform_client_deploy_hook, repo, branch, build, buildtype, config, stage='post', hosts=env.roledefs['app_all'])
@@ -165,7 +165,7 @@ def main(repo, repourl, branch, build, buildtype, url=None, magento_email=None, 
       execute(Magento.adjust_files_symlink, repo, buildtype, www_root, site_root, user)
       execute(Magento.magento_compilation_steps, site_root, user)
       execute(Magento.magento_maintenance_mode, site_root, 'enable')
-      execute(common.Utils.adjust_live_symlink, repo, branch, build, buildtype)
+      execute(common.Utils.adjust_live_symlink, repo, branch, build, buildtype, hosts=env.roledefs['app_all'])
 
       # Let's allow developers to perform some actions right after Magento is built
       execute(common.Utils.perform_client_deploy_hook, repo, branch, build, buildtype, config, stage='mid', hosts=env.roledefs['app_all'])
@@ -179,7 +179,7 @@ def main(repo, repourl, branch, build, buildtype, url=None, magento_email=None, 
       execute(common.Services.clear_varnish_cache, hosts=env.roledefs['app_all'])
       execute(common.Services.reload_webserver, hosts=env.roledefs['app_all'])
 
-      execute(Magento.generate_magento_cron, repo, buildtype, site_link)
+      execute(Magento.generate_magento_cron, repo, buildtype, site_link, autoscale)
 
       # Let's allow developers to perform some post-build actions if they need to
       execute(common.Utils.perform_client_deploy_hook, repo, branch, build, buildtype, config, stage='post', hosts=env.roledefs['app_all'])
