@@ -11,7 +11,7 @@ import common.PHP
 # Run phpunit tests
 @task
 @roles('app_primary')
-def run_phpunit_tests(path_to_app, group='unit', path='www', phpunit_path='vendor/phpunit/phpunit/phpunit', phpunit_install=True):
+def run_phpunit_tests(path_to_app, group='unit', path='www', phpunit_path='vendor/phpunit/phpunit/phpunit'):
   phpunit_tests_failed=True
   # We cannot make phpunit work with PHP 5.x, too many problems
   # Detect PHP version
@@ -23,12 +23,8 @@ def run_phpunit_tests(path_to_app, group='unit', path='www', phpunit_path='vendo
   with cd("%s" % path_to_app):
     # Make sure phpunit is available to use
     # We don't want to fail if it's already there
-    if phpunit_install:
-      with settings(warn_only=True):
-        print "===> Installing phpunit..."
-        common.PHP.composer_command(path_to_app, "require", "phpunit/phpunit")
-    else:
-      print "##### phpunit already installed."
+    with settings(warn_only=True):
+      common.PHP.composer_command(path_to_app, "require", "phpunit/phpunit")
 
     # Now let's look for a phpunit.xml file to use
     phpunit_xml = False

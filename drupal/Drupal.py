@@ -15,16 +15,11 @@ import Revert
 
 # Function to set up a site mapping for Drupal multisites, if applicable.
 @task
-def configure_site_mapping(repo, mapping, config, method="deployment", branch=None):
-  wording = []
-  if method == "deployment":
-    wording = ["deploy", "deployment"]
-  else:
-    wording = ["sync", "sync"]
+def configure_site_mapping(repo, mapping, config):
   sites = []
   # [Sites] is defined in config.ini
   if config.has_section("Sites"):
-    print "===> Found a Sites section. Determining which sites to %s..." % wording[0]
+    print "===> Found a Sites section. Determining which sites to deploy..."
     for option in config.options("Sites"):
       line = config.get("Sites", option)
       line = line.split(',')
@@ -33,26 +28,13 @@ def configure_site_mapping(repo, mapping, config, method="deployment", branch=No
         sites.append(sitename)
 
   if not sites:
-    print "There isn't a Sites section, so we assume this is standard %s." % wording[1]
+    print "There isn't a Sites section, so we assume this is standard deployment."
     buildsite = 'default'
     alias = repo
     mapping.update({alias:buildsite})
   # @TODO: can this use sites.php?
   else:
-    if method == "deployment":
-      dirs = os.walk('www/sites').next()[1]
-    else:
-      if branch is None:
-        raise SystemExit("Cannot configure a sync mapping if the branch name hasn't been specified.")
-      dirs = []
-      dirs_remote = run("cd /var/www/live.%s.%s/www/sites && ls -d */" % (repo, branch))
-      print "dirs_remote: %s" % dirs_remote
-      dir_array = dirs_remote.split('/')
-      for directory in dir_array:
-        directory = directory.strip()
-        if directory:
-          dirs.append(directory)
-      print "dirs: %s" % dirs
+    dirs = os.walk('www/sites').next()[1]
     for buildsite in dirs:
       if buildsite in sites:
         if buildsite == 'default':
@@ -638,10 +620,6 @@ def go_online(repo, branch, build, buildtype, alias, site, previous_build, reado
         else:
           DrupalUtils.drush_command("vset maintenance_mode 0", site, drush_runtime_location)
 
-  print "Clear the cache after bringing the %s site back online." % site
-  with settings(warn_only=True):
-    drush_clear_cache(repo, branch, build, site, drupal_version)
-
 
 # Set the username and password of user 1 to something random if the buildtype is 'prod'
 @task
@@ -650,7 +628,7 @@ def secure_admin_password(repo, branch, build, site, drupal_version):
   print "===> Setting secure username and password for uid 1"
   drush_runtime_location = "/var/www/%s_%s_%s/www/sites/%s" % (repo, branch, build, site)
   u1pass = common.Utils._gen_passwd(20)
-  u1name = "codeenigma-%s-admin" % branch
+  u1name = common.Utils._gen_passwd(20)
   with cd('/var/www/%s_%s_%s/www/sites/%s' % (repo, branch, build, site)):
     with settings(warn_only=True):
       if drupal_version > 7:
