@@ -1,5 +1,6 @@
 from fabric.api import *
 import common.ConfigFile
+import re
 
 
 # Runs a drush command
@@ -81,22 +82,21 @@ def get_database(shortname, branch, sanitise, site="default"):
   # Let's dump the database into a bzip2 file
   print "===> Dumping database into bzip2 file..."
   if sanitise == "yes":
-    # @TODO: this will need Drupal 8 support!
     # We need to run a special mysqldump command to obfustcate the database
     with settings(hide('running', 'stdout', 'stderr')):
 
-      drush_runtime_location = "/var/www/live.%s.%s/www/sites/%s" % (shortname, branch, site)
-      dbname_output = drush_command("status -l %s Database\ name" % site, drush_site=None, drush_runtime_location=drush_runtime_location, drush_sudo=False, drush_format=None, drush_path=None, www_user=False)
-      dbuser_output = drush_command("status -l %s Database\ user" % site, drush_site=None, drush_runtime_location=drush_runtime_location, drush_sudo=False, drush_format=None, drush_path=None, www_user=False)
-      dbpass_output = drush_command("--show-passwords status -l %s Database\ pass" % site, drush_site=None, drush_runtime_location=drush_runtime_location, drush_sudo=False, drush_format=None, drush_path=None, www_user=False)
-      dbhost_output = drush_command("status -l %s Database\ host" % site, drush_site=None, drush_runtime_location=drush_runtime_location, drush_sudo=False, drush_format=None, drush_path=None, www_user=False)
+      with cd("/var/www/live.%s.%s/www/sites/%s" % (shortname, branch, site)):
+        db_name_output = sudo("grep -v \"*\" settings.php | grep \"'database' => '%s*\" | cut -d \">\" -f 2" % shortname)
+        db_user_output = sudo("grep -v \"*\" settings.php | grep \"'username' => \" | cut -d \">\" -f 2" )
+        db_pass_output = sudo("grep -v \"*\" settings.php | grep \"'password' => \" | cut -d \">\" -f 2" )
+        db_host_output = sudo("grep -v \"*\" settings.php | grep \"'host' => \" | cut -d \">\" -f 2" )
 
-      dbname = run("echo \"%s\" | awk {'print $4'} | head -1" % dbname_output)
-      dbuser = run("echo \"%s\" | awk {'print $4'} | head -1" % dbuser_output)
-      dbpass = run("echo \"%s\" | awk {'print $4'} | head -1" % dbpass_output)
-      dbhost = run("echo \"%s\" | awk {'print $4'} | head -1" % dbhost_output)
+      db_name = db_name_output.translate(None, "',")
+      db_user = db_user_output.translate(None, "',")
+      db_pass = db_pass_output.translate(None, "',")
+      db_host = db_host_output.translate(None, "',")
 
-      run('mysqldump --single-transaction -c --opt -Q --hex-blob -u%s -p%s -h%s %s | /usr/local/bin/drupal-obfuscate.rb | bzip2 -f > ~jenkins/client-db-dumps/%s-%s_database_dump.sql.bz2' % (dbuser, dbpass, dbhost, dbname, shortname, branch))
+      run('mysqldump --single-transaction -c --opt -Q --hex-blob -u%s -p%s -h%s %s | /usr/local/bin/drupal-obfuscate.rb | bzip2 -f > ~jenkins/client-db-dumps/%s-%s_database_dump.sql.bz2' % (db_user, db_pass, db_host, db_name, shortname, branch))
 
   else:
     run('cd /var/www/live.%s.%s/www/sites/%s && drush -l %s -y sql-dump | bzip2 -f > ~jenkins/client-db-dumps/%s-%s_database_dump.sql.bz2' % (shortname, branch, site, site, shortname, branch))
@@ -126,3 +126,41 @@ def check_site_exists(previous_build, site):
       else:
         print "###### %s site does not exist." % site
         return False
+
+@task
+def determine_drush_major_version(drush_path=None):
+  """
+  Find the Drush version (major)
+
+  The output of drush --version can be any of the following:
+  - Drush Commandline Tool 10.3.5
+  - Drush Commandline Tool 9.7.2
+  - Drush Version   :  8.4.5
+  - Drush Version   :  7.4.0
+  and can include warnings...
+
+  I've used a modified version of the semver regex: I removed ^ from the
+  beginning and $ from the end so that wherever the version appears in the
+  string, it'll hopefully find it
+
+  @see https://semver.org/#is-there-a-suggested-regular-expression-regex-to-check-a-semver-string
+  """
+  drush_version_output = run(drush_path + " --version") if drush_path else run("drush --version")
+  semver = re.compile("(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)(?:-(?P<prerelease>(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+(?P<buildmetadata>[0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?")
+  drush_version = semver.search(drush_version_output)
+
+  if drush_version:
+    return int(drush_version.group('major'))
+  raise SystemExit("Unable to determine the installed version of Drush")
+
+@task
+def get_drush_user_password_command(name, password):
+  """
+  Construct the drush user-password command
+
+  Prior to Drush 9.x, the upwd command expects --password, newer versions of
+  Drush do not.
+  """
+  if determine_drush_major_version() >= 9:
+    return "upwd %s '%s'" % (name, password)
+  return "upwd %s --password='%s'" % (name, password)
